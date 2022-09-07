@@ -44,7 +44,7 @@ def build_mac(enable_xnnpack = False):
     cpuinfo_file = f'{TENSORFLOW_PATH}/third_party/cpuinfo/cpuinfo.BUILD'
     original = '"cpu": "darwin",'
     patched = '"cpu": "darwin_x86_64",'
-    patch(cpuinfo_file, original, patched)
+    # patch(cpuinfo_file, original, patched)
     run_cmd('bazel build --config=macos --cpu=darwin_x86_64 --macos_cpus=x86_64 --apple_platform_type=macos --cxxopt=--std=c++17 -c opt --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt -fvisibility=default --linkopt -s --strip always //tensorflow/lite/delegates/gpu:tensorflow_lite_gpu_dylib')
     run_cmd('bazel build --config=macos_arm64 --cpu=darwin_arm64  --macos_cpus=arm64 --apple_platform_type=macos --cxxopt=--std=c++17 -c opt --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt -fvisibility=default --linkopt -s --strip always //tensorflow/lite/delegates/gpu:tensorflow_lite_gpu_dylib')
     # Export path contains postfix like `applebin_macos-darwin_arm64-opt-ST-*`
@@ -52,7 +52,7 @@ def build_mac(enable_xnnpack = False):
     print(metal_delegate_pathes)
     run_cmd(f'lipo -create -output {PLUGIN_PATH}/macOS/libtensorflowlite_metal_delegate.dylib ' + ' '.join(metal_delegate_pathes))
     # Restore patch
-    patch(cpuinfo_file, patched, original)
+    # patch(cpuinfo_file, patched, original)
 
 def build_windows(enable_xnnpack = True):
     # Main
