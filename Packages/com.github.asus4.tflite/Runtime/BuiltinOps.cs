@@ -171,5 +171,16 @@ namespace TensorFlowLite
         RandomUniform = 148,
         Multinomial = 149,
         Gelu = 150,
+        DynamicUpdateSlice = 151,
+        Relu0To1 = 152,
+        UnsortedSegmentProd = 153,
+        UnsortedSegmentMax = 154,
+        UnsortedSegmentSum = 155,
+        Atan2 = 156,
+        UnsortedSegmentMin = 157,
+        Sign = 158,
+        Bitcast = 159,
+        BitwiseXor = 160,
+        RightShift = 161,
     }
 }

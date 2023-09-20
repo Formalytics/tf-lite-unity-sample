@@ -16,6 +16,7 @@ limitations under the License.
 using System;
 using System.Runtime.InteropServices;
 using TfLiteDelegate = System.IntPtr;
+using TfLiteXNNPackDelegateWeightsCache = System.IntPtr;
 
 namespace TensorFlowLite
 {
@@ -29,13 +30,26 @@ namespace TensorFlowLite
             QS8 = 0x00000001,
             // Enable XNNPACK acceleration for unsigned quantized 8-bit inference.
             QU8 = 0x00000002,
+            // Force FP16 inference for FP32 operators.
+            FORCE_FP16 = 0x00000004,
+            // Enable XNNPACK acceleration for FULLY_CONNECTED operator with dynamic
+            //weights.
+            DYNAMIC_FULLY_CONNECTED = 0x00000008,
         }
 
         [StructLayout(LayoutKind.Sequential)]
         public struct Options
         {
+            // Number of threads to use in the thread pool.
+            // 0 or negative value means no thread pool used.
             public int numThreads;
             public Flags flags;
+            // Cache for packed weights, can be shared between multiple instances of
+            // delegates.
+            public TfLiteXNNPackDelegateWeightsCache weightsCache;
+            // Whether READ_VARIABLE, ASSIGN_VARIABLE, and VARIABLE_HANDLE operations
+            // should be handled by XNNPACK.
+            public bool handleVariableOps;
         }
 
         public TfLiteDelegate Delegate { get; private set; }
@@ -91,10 +105,20 @@ namespace TensorFlowLite
         [DllImport(TensorFlowLibrary)]
         private static extern unsafe TfLiteDelegate TfLiteXNNPackDelegateCreate(ref Options options);
 
-
         // Destroys a delegate created with `TfLiteXNNPackDelegateCreate` call.
         [DllImport(TensorFlowLibrary)]
         private static extern unsafe void TfLiteXNNPackDelegateDelete(TfLiteDelegate xnnPackDelegate);
+
+        // Weights Cache is disable due to build error in iOS and Unity 2021 LTS.
+        // https://github.com/asus4/tf-lite-unity-sample/issues/261
+
+        // Creates a new weights cache that can be shared with multiple delegate instances.
+        // [DllImport(TensorFlowLibrary)]
+        // private static extern unsafe TfLiteXNNPackDelegateWeightsCache TfLiteXNNPackDelegateWeightsCacheCreate();        
+
+        // Destroys a weights cache created with `TfLiteXNNPackDelegateWeightsCacheCreate` call.
+        // [DllImport(TensorFlowLibrary)]
+        // private static extern unsafe void TfLiteXNNPackWeightsCacheDelete(TfLiteXNNPackDelegateWeightsCache cache);
         #endregion // Externs
     }
 }

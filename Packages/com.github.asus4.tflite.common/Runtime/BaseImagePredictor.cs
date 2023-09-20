@@ -1,6 +1,8 @@
 ﻿using System.Threading;
-using Cysharp.Threading.Tasks;
 using UnityEngine;
+#if TFLITE_UNITASK_ENABLED
+using Cysharp.Threading.Tasks;
+#endif // TFLITE_UNITASK_ENABLED
 
 namespace TensorFlowLite
 {
@@ -27,7 +29,7 @@ namespace TensorFlowLite
         protected readonly int width;
         protected readonly int height;
         protected readonly int channels;
-        protected readonly T[,,] input0;
+        protected readonly T[,,] inputTensor;
         protected readonly TextureToTensor tex2tensor;
         protected readonly TextureResizer resizer;
         protected TextureResizer.ResizeOptions resizeOptions;
@@ -49,7 +51,60 @@ namespace TensorFlowLite
             set => resizeOptions = value;
         }
 
-        public BaseImagePredictor(byte[] model, TextureToTensor textureToTensor, Accelerator accelerator)
+        public BaseImagePredictor(byte[] modelData, InterpreterOptions options)
+        {
+            try
+            {
+                interpreter = new Interpreter(modelData, options);
+            }
+            catch (System.Exception e)
+            {
+                interpreter?.Dispose();
+                throw e;
+            }
+
+            interpreter.LogIOInfo();
+            // Initialize inputs
+            {
+                var inputShape0 = interpreter.GetInputTensorInfo(0).shape;
+                height = inputShape0[1];
+                width = inputShape0[2];
+                channels = inputShape0[3];
+                inputTensor = new T[height, width, channels];
+
+                int inputCount = interpreter.GetInputTensorCount();
+                for (int i = 0; i < inputCount; i++)
+                {
+                    int[] shape = interpreter.GetInputTensorInfo(i).shape;
+                    interpreter.ResizeInputTensor(i, shape);
+                }
+                interpreter.AllocateTensors();
+            }
+
+            tex2tensor = new TextureToTensor();
+            resizer = new TextureResizer();
+            resizeOptions = new TextureResizer.ResizeOptions()
+            {
+                aspectMode = AspectMode.Fill,
+                rotationDegree = 0,
+                mirrorHorizontal = false,
+                mirrorVertical = false,
+                width = width,
+                height = height,
+            };
+        }
+
+        public BaseImagePredictor(string modelPath, InterpreterOptions options)
+            : this(FileUtil.LoadFile(modelPath), options)
+        {
+        }
+
+        public BaseImagePredictor(string modelPath, Accelerator accelerator)
+            : this(modelPath, CreateOptions(accelerator))
+        {
+        }
+
+        protected static InterpreterOptions CreateOptions(Accelerator accelerator)
         {
             var options = new InterpreterOptions();
 
@@ -61,7 +116,10 @@ namespace TensorFlowLite
                 case Accelerator.NNAPI:
                     if (Application.platform == RuntimePlatform.Android)
                     {
-                        options.useNNAPI = true;
+#if UNITY_ANDROID && !UNITY_EDITOR
+                        // Create NNAPI delegate with default options
+                        options.AddDelegate(new NNAPIDelegate());
+#endif // UNITY_ANDROID && !UNITY_EDITOR
                     }
                     else
                     {
@@ -79,46 +137,7 @@ namespace TensorFlowLite
                     options.Dispose();
                     throw new System.NotImplementedException();
             }
-
-            try
-            {
-                interpreter = new Interpreter(model, options);
-            }
-            catch (System.Exception e)
-            {
-                interpreter?.Dispose();
-                throw e;
-            }
-
-            interpreter.LogIOInfo();
-            // Initialize inputs
-            {
-                var inputShape0 = interpreter.GetInputTensorInfo(0).shape;
-                height = inputShape0[1];
-                width = inputShape0[2];
-                channels = inputShape0[3];
-                input0 = new T[height, width, channels];
-
-                int inputCount = interpreter.GetInputTensorCount();
-                for (int i = 0; i < inputCount; i++)
-                {
-                    int[] shape = interpreter.GetInputTensorInfo(i).shape;
-                    interpreter.ResizeInputTensor(i, shape);
-                }
-                interpreter.AllocateTensors();
-            }
-
-            tex2tensor = textureToTensor;
-            resizer = new TextureResizer();
-            resizeOptions = new TextureResizer.ResizeOptions()
-            {
-                aspectMode = AspectMode.Fill,
-                rotationDegree = 0,
-                mirrorHorizontal = false,
-                mirrorVertical = false,
-                width = width,
-                height = height,
-            };
+            return options;
         }
 
         public virtual void Dispose()
@@ -160,6 +179,9 @@ namespace TensorFlowLite
             tex2tensor.ToTensor(tex, inputs);
         }
 
+        // ToTensorAsync methods are only available when UniTask is installed via Unity Package Manager.
+        // TODO: consider using native Task or Unity Coroutine
+#if TFLITE_UNITASK_ENABLED
         protected async UniTask<bool> ToTensorAsync(Texture inputTex, float[,,] inputs, CancellationToken cancellationToken)
         {
             RenderTexture tex = resizer.Resize(inputTex, resizeOptions);
@@ -173,5 +195,20 @@ namespace TensorFlowLite
             await tex2tensor.ToTensorAsync(tex, inputs, cancellationToken);
             return true;
         }
+
+        protected async UniTask<bool> ToTensorAsync(Texture inputTex, sbyte[,,] inputs, CancellationToken cancellationToken)
+        {
+            RenderTexture tex = resizer.Resize(inputTex, resizeOptions);
+            await tex2tensor.ToTensorAsync(tex, inputs, cancellationToken);
+            return true;
+        }
+
+        protected async UniTask<bool> ToTensorAsync(Texture inputTex, int[,,] inputs, CancellationToken cancellationToken)
+        {
+            RenderTexture tex = resizer.Resize(inputTex, resizeOptions);
+            await tex2tensor.ToTensorAsync(tex, inputs, cancellationToken);
+            return true;
+        }
+#endif // TFLITE_UNITASK_ENABLED
     }
 }
