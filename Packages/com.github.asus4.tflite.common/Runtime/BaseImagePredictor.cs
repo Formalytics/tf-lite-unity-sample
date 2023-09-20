@@ -51,11 +51,11 @@ namespace TensorFlowLite
             set => resizeOptions = value;
         }
 
-        public BaseImagePredictor(byte[] model, TextureToTensor textureToTensor, Accelerator accelerator)
+        public BaseImagePredictor(byte[] modelData, InterpreterOptions options)
         {
             try
             {
-                interpreter = new Interpreter(model, options);
+                interpreter = new Interpreter(modelData, options);
             }
             catch (System.Exception e)
             {
@@ -81,7 +81,7 @@ namespace TensorFlowLite
                 interpreter.AllocateTensors();
             }
 
-            tex2tensor = textureToTensor;
+            tex2tensor = new TextureToTensor();
             resizer = new TextureResizer();
             resizeOptions = new TextureResizer.ResizeOptions()
             {
