@@ -1,6 +1,8 @@
 ﻿using System.Threading;
-using Cysharp.Threading.Tasks;
 using UnityEngine;
+#if TFLITE_UNITASK_ENABLED
+using Cysharp.Threading.Tasks;
+#endif // TFLITE_UNITASK_ENABLED
 
 namespace TensorFlowLite
 {
@@ -27,7 +29,7 @@ namespace TensorFlowLite
         protected readonly int width;
         protected readonly int height;
         protected readonly int channels;
-        protected readonly T[,,] input0;
+        protected readonly T[,,] inputTensor;
         protected readonly TextureToTensor tex2tensor;
         protected readonly TextureResizer resizer;
         protected TextureResizer.ResizeOptions resizeOptions;
@@ -51,35 +53,6 @@ namespace TensorFlowLite
 
         public BaseImagePredictor(byte[] model, TextureToTensor textureToTensor, Accelerator accelerator)
         {
-            var options = new InterpreterOptions();
-
-            switch (accelerator)
-            {
-                case Accelerator.NONE:
-                    options.threads = SystemInfo.processorCount;
-                    break;
-                case Accelerator.NNAPI:
-                    if (Application.platform == RuntimePlatform.Android)
-                    {
-                        options.useNNAPI = true;
-                    }
-                    else
-                    {
-                        Debug.LogError("NNAPI is only supported on Android");
-                    }
-                    break;
-                case Accelerator.GPU:
-                    options.AddGpuDelegate();
-                    break;
-                case Accelerator.XNNPACK:
-                    options.threads = SystemInfo.processorCount;
-                    options.AddDelegate(XNNPackDelegate.DelegateForType(typeof(T)));
-                    break;
-                default:
-                    options.Dispose();
-                    throw new System.NotImplementedException();
-            }
-
             try
             {
                 interpreter = new Interpreter(model, options);
@@ -97,7 +70,7 @@ namespace TensorFlowLite
                 height = inputShape0[1];
                 width = inputShape0[2];
                 channels = inputShape0[3];
-                input0 = new T[height, width, channels];
+                inputTensor = new T[height, width, channels];
 
                 int inputCount = interpreter.GetInputTensorCount();
                 for (int i = 0; i < inputCount; i++)
@@ -119,6 +92,52 @@ namespace TensorFlowLite
                 width = width,
                 height = height,
             };
+        }
+
+        public BaseImagePredictor(string modelPath, InterpreterOptions options)
+            : this(FileUtil.LoadFile(modelPath), options)
+        {
+        }
+
+        public BaseImagePredictor(string modelPath, Accelerator accelerator)
+            : this(modelPath, CreateOptions(accelerator))
+        {
+        }
+
+        protected static InterpreterOptions CreateOptions(Accelerator accelerator)
+        {
+            var options = new InterpreterOptions();
+
+            switch (accelerator)
+            {
+                case Accelerator.NONE:
+                    options.threads = SystemInfo.processorCount;
+                    break;
+                case Accelerator.NNAPI:
+                    if (Application.platform == RuntimePlatform.Android)
+                    {
+#if UNITY_ANDROID && !UNITY_EDITOR
+                        // Create NNAPI delegate with default options
+                        options.AddDelegate(new NNAPIDelegate());
+#endif // UNITY_ANDROID && !UNITY_EDITOR
+                    }
+                    else
+                    {
+                        Debug.LogError("NNAPI is only supported on Android");
+                    }
+                    break;
+                case Accelerator.GPU:
+                    options.AddGpuDelegate();
+                    break;
+                case Accelerator.XNNPACK:
+                    options.threads = SystemInfo.processorCount;
+                    options.AddDelegate(XNNPackDelegate.DelegateForType(typeof(T)));
+                    break;
+                default:
+                    options.Dispose();
+                    throw new System.NotImplementedException();
+            }
+            return options;
         }
 
         public virtual void Dispose()
@@ -160,6 +179,9 @@ namespace TensorFlowLite
             tex2tensor.ToTensor(tex, inputs);
         }
 
+        // ToTensorAsync methods are only available when UniTask is installed via Unity Package Manager.
+        // TODO: consider using native Task or Unity Coroutine
+#if TFLITE_UNITASK_ENABLED
         protected async UniTask<bool> ToTensorAsync(Texture inputTex, float[,,] inputs, CancellationToken cancellationToken)
         {
             RenderTexture tex = resizer.Resize(inputTex, resizeOptions);
@@ -173,5 +195,20 @@ namespace TensorFlowLite
             await tex2tensor.ToTensorAsync(tex, inputs, cancellationToken);
             return true;
         }
+
+        protected async UniTask<bool> ToTensorAsync(Texture inputTex, sbyte[,,] inputs, CancellationToken cancellationToken)
+        {
+            RenderTexture tex = resizer.Resize(inputTex, resizeOptions);
+            await tex2tensor.ToTensorAsync(tex, inputs, cancellationToken);
+            return true;
+        }
+
+        protected async UniTask<bool> ToTensorAsync(Texture inputTex, int[,,] inputs, CancellationToken cancellationToken)
+        {
+            RenderTexture tex = resizer.Resize(inputTex, resizeOptions);
+            await tex2tensor.ToTensorAsync(tex, inputs, cancellationToken);
+            return true;
+        }
+#endif // TFLITE_UNITASK_ENABLED
     }
 }
